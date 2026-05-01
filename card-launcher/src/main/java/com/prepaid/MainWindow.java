@@ -23,6 +23,7 @@ public class MainWindow extends JFrame {
 
         add(topBar, BorderLayout.NORTH);
         add(tabs, BorderLayout.CENTER);
+        add(new DialogManagerPanel(), BorderLayout.SOUTH);
 
         // Launch Nanomet if checked
         launchNanomet.addActionListener(e -> {
