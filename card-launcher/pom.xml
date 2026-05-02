@@ -5,6 +5,11 @@
   <version>0.0.1-SNAPSHOT</version>
 
   <dependencies>
+  <dependency>
+    <groupId>net.sf.ucanaccess</groupId>
+    <artifactId>ucanaccess</artifactId>
+    <version>5.0.1</version>
+</dependency>
     <dependency>
       <groupId>net.java.dev.jna</groupId>
       <artifactId>jna</artifactId>

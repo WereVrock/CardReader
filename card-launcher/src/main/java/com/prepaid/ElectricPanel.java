@@ -1,18 +1,7 @@
 package com.prepaid;
 
-import java.awt.BorderLayout;
-import java.awt.FlowLayout;
-import java.awt.Font;
-
-import javax.swing.BorderFactory;
-import javax.swing.JButton;
-import javax.swing.JLabel;
-import javax.swing.JOptionPane;
-import javax.swing.JPanel;
-import javax.swing.JScrollPane;
-import javax.swing.JTextArea;
-import javax.swing.JTextField;
-import javax.swing.SwingUtilities;
+import javax.swing.*;
+import java.awt.*;
 
 public class ElectricPanel extends JPanel {
 
@@ -57,35 +46,39 @@ add(scroll, BorderLayout.CENTER);
 // Wire buttons
 readButton.addActionListener(e -> onRead());
 loadButton.addActionListener(e -> onLoad());
+
+JButton dbButton = new JButton("DB Viewer");
+controls.add(dbButton);
+dbButton.addActionListener(e -> onDbViewer());
 }
 
 private void onRead() {
-        try {
-            javax.swing.JFrame topFrame = (javax.swing.JFrame) SwingUtilities.getWindowAncestor(this);
-            topFrame.setAlwaysOnTop(false);
+try {
+javax.swing.JFrame topFrame = (javax.swing.JFrame) SwingUtilities.getWindowAncestor(this);
+topFrame.setAlwaysOnTop(false);
 
-            if (!NanometController.isPopupOpen()) {
-                NanometController.clickPowerPurchase();
-                Thread.sleep(1500);
-            }
+if (!NanometController.isPopupOpen()) {
+NanometController.clickPowerPurchase();
+Thread.sleep(1500);
+}
 
-            if (!NanometController.isPopupOpen()) {
-                infoArea.setText("Could not open Power Purchase window.");
-                topFrame.setAlwaysOnTop(true);
-                topFrame.toFront();
-                return;
-            }
+if (!NanometController.isPopupOpen()) {
+infoArea.setText("Could not open Power Purchase window.");
+topFrame.setAlwaysOnTop(true);
+topFrame.toFront();
+return;
+}
 
-            NanometController.demotePopup();
-            NanometController.clickReadCard();
-            Thread.sleep(1000);
-            infoArea.setText(NanometController.readMemo());
-            topFrame.setAlwaysOnTop(true);
-            topFrame.toFront();
-        } catch (Exception ex) {
-            infoArea.append("Exception: " + ex.getMessage() + "\n");
-        }
-    }
+NanometController.demotePopup();
+NanometController.clickReadCard();
+Thread.sleep(3000);
+infoArea.setText(NanometController.readCardInfo());
+topFrame.setAlwaysOnTop(true);
+topFrame.toFront();
+} catch (Exception ex) {
+infoArea.append("Exception: " + ex.getMessage() + "\n");
+}
+}
 
 private void onLoad() {
 String amount = moneyField.getText().trim();
@@ -133,7 +126,54 @@ return true;
 }, null);
 }
 
+private void onDbViewer() {
+JDialog dialog = new JDialog((javax.swing.JFrame) SwingUtilities.getWindowAncestor(this), "Database Viewer", false);
+dialog.setSize(900, 600);
+dialog.setLocationRelativeTo(this);
+dialog.setLayout(new BorderLayout(8, 8));
+
+JTextField sqlField = new JTextField("SELECT TOP 50 C_Name, C_MNo, C_Left, C_Times, C_State FROM Customer ORDER BY C_Name");
+JButton runBtn = new JButton("Run");
+JPanel top = new JPanel(new BorderLayout(4, 4));
+top.setBorder(BorderFactory.createEmptyBorder(8, 8, 0, 8));
+top.add(new JLabel("SQL:"), BorderLayout.WEST);
+top.add(sqlField, BorderLayout.CENTER);
+top.add(runBtn, BorderLayout.EAST);
+
+JTextArea results = new JTextArea();
+results.setEditable(false);
+results.setFont(new Font("Monospaced", Font.PLAIN, 11));
+JScrollPane scroll = new JScrollPane(results);
+scroll.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
+
+JPanel quickPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+for (String[] q : new String[][]{
+{"Customers",        "SELECT TOP 50 C_Name, C_MNo, C_Left, C_Times, C_State FROM Customer ORDER BY C_Name"},
+{"Recent Purchases", "SELECT TOP 20 B_Date, B_MNo, B_AmountW, B_Left, B_State FROM BuyE ORDER BY B_Date DESC"},
+{"Meters",           "SELECT TOP 50 M_No, M_CNo, M_State, M_Left FROM Meters"}
+}) {
+JButton btn = new JButton(q[0]);
+String queryCopy = q[1];
+btn.addActionListener(ev -> {
+sqlField.setText(queryCopy);
+results.setText(NanometController.queryDatabase(queryCopy));
+});
+quickPanel.add(btn);
+}
+
+runBtn.addActionListener(ev -> results.setText(NanometController.queryDatabase(sqlField.getText().trim())));
+sqlField.addActionListener(ev -> results.setText(NanometController.queryDatabase(sqlField.getText().trim())));
+
+dialog.add(top, BorderLayout.NORTH);
+dialog.add(scroll, BorderLayout.CENTER);
+dialog.add(quickPanel, BorderLayout.SOUTH);
+dialog.setVisible(true);
+
+results.setText(NanometController.queryDatabase(sqlField.getText().trim()));
+}
+
 public void setKwh(String kwh) {
 kwhField.setText(kwh);
 }
 }
+
