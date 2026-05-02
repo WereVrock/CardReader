@@ -196,18 +196,57 @@ return true;
 }
 
 public static void setAmount(String amount) {
-HWND popup = User32.INSTANCE.FindWindow(null, POPUP_WINDOW);
-if (popup == null) return;
-User32.INSTANCE.EnumChildWindows(popup, (child, data) -> {
-char[] cls = new char[512];
-User32.INSTANCE.GetClassName(child, cls, 512);
-if (new String(cls).trim().equals("TDBNumberEditEh")) {
-User32Ex.INSTANCE.SetWindowTextW(child, amount);
-return false;
-}
-return true;
-}, null);
-}
+        HWND popup = User32.INSTANCE.FindWindow(null, POPUP_WINDOW);
+        if (popup == null) return;
+
+        final HWND[] fieldHwnd = {null};
+        User32.INSTANCE.EnumChildWindows(popup, (child, data) -> {
+            char[] cls = new char[512];
+            User32.INSTANCE.GetClassName(child, cls, 512);
+            if (new String(cls).trim().equals("TDBNumberEditEh")) {
+                fieldHwnd[0] = child;
+                return false;
+            }
+            return true;
+        }, null);
+
+        if (fieldHwnd[0] == null) return;
+
+        try {
+            // Get field position and click it
+            RECT r = new RECT();
+            User32.INSTANCE.GetWindowRect(fieldHwnd[0], r);
+            int cx = r.left + (r.right - r.left) / 2;
+            int cy = r.top + (r.bottom - r.top) / 2;
+
+            Robot robot = new Robot();
+            robot.mouseMove(cx, cy);
+            robot.mousePress(InputEvent.BUTTON1_DOWN_MASK);
+            Thread.sleep(50);
+            robot.mouseRelease(InputEvent.BUTTON1_DOWN_MASK);
+            Thread.sleep(150);
+
+            // Select all and delete existing content
+            robot.keyPress(java.awt.event.KeyEvent.VK_CONTROL);
+            robot.keyPress(java.awt.event.KeyEvent.VK_A);
+            robot.keyRelease(java.awt.event.KeyEvent.VK_A);
+            robot.keyRelease(java.awt.event.KeyEvent.VK_CONTROL);
+            Thread.sleep(50);
+            robot.keyPress(java.awt.event.KeyEvent.VK_DELETE);
+            robot.keyRelease(java.awt.event.KeyEvent.VK_DELETE);
+            Thread.sleep(50);
+
+            // Type the amount digit by digit
+            for (char c : amount.toCharArray()) {
+                int keyCode = java.awt.event.KeyEvent.getExtendedKeyCodeForChar(c);
+                robot.keyPress(keyCode);
+                robot.keyRelease(keyCode);
+                Thread.sleep(30);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
 
 public static boolean isPopupOpen() {
 HWND popup = User32.INSTANCE.FindWindow(null, POPUP_WINDOW);
