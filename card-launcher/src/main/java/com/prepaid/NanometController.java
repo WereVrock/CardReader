@@ -80,7 +80,7 @@ public class NanometController {
         return DriverManager.getConnection("jdbc:ucanaccess://" + MAIN_DB, props);
     }
 
-    public static String queryDatabase(String sql) {
+public static String queryDatabase(String sql) {
         try {
             Connection conn = openMainDb();
             ResultSet rs = conn.createStatement().executeQuery(sql);
@@ -102,7 +102,37 @@ public class NanometController {
         }
     }
 
-    // =========================================================================
+    public static String fullSnapshot() {
+        try {
+            Connection conn = openMainDb();
+            String[] tables = {"Customer", "BuyE", "Meters", "ST", "Duc", "Huan",
+                               "Huifu", "Ting", "zhuxiao", "ChangeM", "buka"};
+            StringBuilder sb = new StringBuilder();
+            for (String table : tables) {
+                try {
+                    ResultSet rs = conn.createStatement().executeQuery("SELECT * FROM " + table);
+                    java.sql.ResultSetMetaData meta = rs.getMetaData();
+                    int cols = meta.getColumnCount();
+                    // Hash all rows into a single string per table
+                    StringBuilder rows = new StringBuilder();
+                    while (rs.next()) {
+                        for (int i = 1; i <= cols; i++)
+                            rows.append(rs.getString(i)).append("|");
+                        rows.append("\n");
+                    }
+                    sb.append(table).append(":").append(rows.toString().hashCode()).append("\n");
+                } catch (Exception ex) {
+                    sb.append(table).append(": ERROR\n");
+                }
+            }
+            conn.close();
+            return sb.toString();
+        } catch (Exception e) {
+            return "DB Error: " + e.getMessage();
+        }
+    }
+
+// =========================================================================
     // NANOMET WINDOW CONTROL
     // =========================================================================
 
@@ -207,8 +237,4 @@ public class NanometController {
             return true;
         }, null);
     }
-
-	public static String readCardInfo() {
-		return "never figured out how to read it.";
-	}
 }
