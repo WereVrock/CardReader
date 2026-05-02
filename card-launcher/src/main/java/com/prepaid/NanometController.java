@@ -80,7 +80,7 @@ public class NanometController {
         return DriverManager.getConnection("jdbc:ucanaccess://" + MAIN_DB, props);
     }
 
-public static String queryDatabase(String sql) {
+    public static String queryDatabase(String sql) {
         try {
             Connection conn = openMainDb();
             ResultSet rs = conn.createStatement().executeQuery(sql);
@@ -113,7 +113,6 @@ public static String queryDatabase(String sql) {
                     ResultSet rs = conn.createStatement().executeQuery("SELECT * FROM " + table);
                     java.sql.ResultSetMetaData meta = rs.getMetaData();
                     int cols = meta.getColumnCount();
-                    // Hash all rows into a single string per table
                     StringBuilder rows = new StringBuilder();
                     while (rs.next()) {
                         for (int i = 1; i <= cols; i++)
@@ -132,7 +131,7 @@ public static String queryDatabase(String sql) {
         }
     }
 
-// =========================================================================
+    // =========================================================================
     // NANOMET WINDOW CONTROL
     // =========================================================================
 
@@ -222,6 +221,40 @@ public static String queryDatabase(String sql) {
         if (popup == null) return;
         HWND HWND_NOTOPMOST = new HWND(new Pointer(-2));
         User32.INSTANCE.SetWindowPos(popup, HWND_NOTOPMOST, 0, 0, 0, 0, 0x0001 | 0x0002);
+    }
+
+    public static String readMemoViaClipboard() {
+        HWND popup = User32.INSTANCE.FindWindow(null, POPUP_WINDOW);
+        if (popup == null) return "Power purchase window not found.";
+
+        final HWND[] memoHwnd = {null};
+        User32.INSTANCE.EnumChildWindows(popup, (child, data) -> {
+            char[] cls = new char[512];
+            User32.INSTANCE.GetClassName(child, cls, 512);
+            if (new String(cls).trim().equals("TMemo")) {
+                memoHwnd[0] = child;
+                return false;
+            }
+            return true;
+        }, null);
+
+        if (memoHwnd[0] == null) return "TMemo not found.";
+
+        User32.INSTANCE.SetForegroundWindow(popup);
+        User32.INSTANCE.SendMessage(memoHwnd[0], 0x0007, new WPARAM(0), new LPARAM(0)); // WM_SETFOCUS
+        User32.INSTANCE.SendMessage(memoHwnd[0], 0x0100, new WPARAM(0x41), new LPARAM(0)); // WM_KEYDOWN A
+        User32.INSTANCE.SendMessage(memoHwnd[0], 0x0101, new WPARAM(0x41), new LPARAM(0)); // WM_KEYUP A
+        User32.INSTANCE.SendMessage(memoHwnd[0], 0x0100, new WPARAM(0x43), new LPARAM(0)); // WM_KEYDOWN C
+        User32.INSTANCE.SendMessage(memoHwnd[0], 0x0101, new WPARAM(0x43), new LPARAM(0)); // WM_KEYUP C
+
+        try {
+            Thread.sleep(200);
+            String clip = (String) java.awt.Toolkit.getDefaultToolkit()
+                .getSystemClipboard().getData(java.awt.datatransfer.DataFlavor.stringFlavor);
+            if (clip != null && !clip.trim().isEmpty()) return clip.trim();
+        } catch (Exception ignored) {}
+
+        return "(Could not read via clipboard)";
     }
 
     public static void clickLoad() {

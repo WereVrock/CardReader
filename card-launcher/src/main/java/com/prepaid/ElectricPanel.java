@@ -1,7 +1,19 @@
 package com.prepaid;
 
-import javax.swing.*;
-import java.awt.*;
+import java.awt.BorderLayout;
+import java.awt.FlowLayout;
+import java.awt.Font;
+
+import javax.swing.BorderFactory;
+import javax.swing.JButton;
+import javax.swing.JDialog;
+import javax.swing.JLabel;
+import javax.swing.JOptionPane;
+import javax.swing.JPanel;
+import javax.swing.JScrollPane;
+import javax.swing.JTextArea;
+import javax.swing.JTextField;
+import javax.swing.SwingUtilities;
 
 public class ElectricPanel extends JPanel {
 
@@ -25,6 +37,8 @@ public class ElectricPanel extends JPanel {
         JLabel kwhLabel = new JLabel("KWH:");
         kwhField = new JTextField(8);
         kwhField.setEditable(false);
+        JButton dbButton = new JButton("DB Viewer");
+        JButton compareBtn = new JButton("Compare DB");
 
         controls.add(readButton);
         controls.add(moneyLabel);
@@ -32,9 +46,8 @@ public class ElectricPanel extends JPanel {
         controls.add(loadButton);
         controls.add(kwhLabel);
         controls.add(kwhField);
-
-        JButton dbButton = new JButton("DB Viewer");
         controls.add(dbButton);
+        controls.add(compareBtn);
 
         infoArea = new JTextArea(10, 40);
         infoArea.setEditable(false);
@@ -48,17 +61,48 @@ public class ElectricPanel extends JPanel {
         readButton.addActionListener(e -> onRead());
         loadButton.addActionListener(e -> onLoad());
         dbButton.addActionListener(e -> onDbViewer());
-
-        JButton compareBtn = new JButton("Compare DB");
-        controls.add(compareBtn);
         compareBtn.addActionListener(e -> onCompare());
+
+        JButton testBtn = new JButton("Test Memo");
+        controls.add(testBtn);
+//        testBtn.addActionListener(e -> onTestMemo());
     }
 
     private void onRead() {
+        try {
+            javax.swing.JFrame topFrame = (javax.swing.JFrame) SwingUtilities.getWindowAncestor(this);
+            topFrame.setAlwaysOnTop(false);
+
+            if (!NanometController.isPopupOpen()) {
+                NanometController.clickPowerPurchase();
+                Thread.sleep(1500);
+            }
+
+            if (!NanometController.isPopupOpen()) {
+                infoArea.setText("Could not open Power Purchase window.");
+                topFrame.setAlwaysOnTop(true);
+                topFrame.toFront();
+                return;
+            }
+
+            NanometController.demotePopup();
+            NanometController.clickReadCard();
+            Thread.sleep(2000);
+            String result = NanometController.readMemoViaClipboard();
+            infoArea.setText(result);
+
+            topFrame.setAlwaysOnTop(true);
+            topFrame.toFront();
+        } catch (Exception ex) {
+            infoArea.append("Exception: " + ex.getMessage() + "\n");
+        }
+    }
+
+    private void onCompare() {
         if (snapshotBefore == null) {
             snapshotBefore = NanometController.fullSnapshot();
             infoArea.setText("=== SNAPSHOT TAKEN ===\n" + snapshotBefore +
-                "\n\nNow insert card and click Read Card in Nanomet.\nThen click Read again to see what changed.");
+                "\n\nNow insert card and click Read Card in Nanomet.\nThen click Compare DB again to see what changed.");
         } else {
             String after = NanometController.fullSnapshot();
             StringBuilder diff = new StringBuilder();
@@ -107,32 +151,6 @@ public class ElectricPanel extends JPanel {
             topFrame.toFront();
         } catch (Exception ex) {
             infoArea.setText("Error: " + ex.getMessage());
-        }
-    }
-
-    private void onCompare() {
-        if (snapshotBefore == null) {
-            snapshotBefore = NanometController.fullSnapshot();
-            infoArea.setText("=== SNAPSHOT TAKEN ===\n" + snapshotBefore +
-                "\n\nNow insert card and click Read Card in Nanomet.\nThen click Compare DB again to see what changed.");
-        } else {
-            String after = NanometController.fullSnapshot();
-            StringBuilder diff = new StringBuilder();
-            boolean anyChange = false;
-            for (String afterLine : after.split("\n")) {
-                if (afterLine.trim().isEmpty()) continue;
-                String table = afterLine.split(":")[0];
-                String beforeLine = snapshotBefore.lines()
-                    .filter(l -> l.startsWith(table + ":"))
-                    .findFirst().orElse("");
-                if (!afterLine.equals(beforeLine)) {
-                    diff.append("CHANGED: ").append(afterLine)
-                        .append("  (was: ").append(beforeLine).append(")\n");
-                    anyChange = true;
-                }
-            }
-            infoArea.setText(anyChange ? diff.toString() : "(No changes detected in any table)");
-            snapshotBefore = null;
         }
     }
 
