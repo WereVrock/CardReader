@@ -196,9 +196,9 @@ public static String clickReadCard() {
         return waitForResultWindow(3000);
     }
 
-    public static String clickLoad() {
+public static void clickLoad() {
         HWND popup = User32.INSTANCE.FindWindow(null, POPUP_WINDOW);
-        if (popup == null) return null;
+        if (popup == null) return;
         User32.INSTANCE.EnumChildWindows(popup, (child, data) -> {
             char[] text = new char[512];
             User32.INSTANCE.GetWindowText(child, text, 512);
@@ -208,10 +208,9 @@ public static String clickReadCard() {
             }
             return true;
         }, null);
-        return waitForResultWindow(5000);
     }
 
-    // Watches for any new top-level window appearing after an action.
+// Watches for any new top-level window appearing after an action.
     // Returns the window text if found, null if timeout.
     private static String waitForResultWindow(int timeoutMs) {
         // Snapshot existing windows before
@@ -270,40 +269,44 @@ public static void setAmount(String amount) {
         if (fieldHwnd[0] == null) return;
 
         try {
-            User32.INSTANCE.ShowWindow(popup, 9);
-            User32.INSTANCE.SetForegroundWindow(popup);
-            Thread.sleep(300);
+            HWND ourApp = User32.INSTANCE.FindWindow(null, "Prepaid Card Manager");
+            HWND HWND_NOTOPMOST = new HWND(new Pointer(-2));
+            HWND HWND_TOPMOST   = new HWND(new Pointer(-1));
 
-            RECT r = new RECT();
-            User32.INSTANCE.GetWindowRect(fieldHwnd[0], r);
-            double scale = java.awt.Toolkit.getDefaultToolkit().getScreenResolution() / 96.0;
-            int cx = (int)((r.left + (r.right - r.left) / 2) / scale);
-            int cy = (int)((r.top + (r.bottom - r.top) / 2) / scale);
+            IntByReference pid = new IntByReference();
+            int targetThread  = User32.INSTANCE.GetWindowThreadProcessId(popup, pid);
+            int currentThread = Kernel32.INSTANCE.GetCurrentThreadId();
+
+            // Remove always-on-top temporarily
+            if (ourApp != null)
+                User32.INSTANCE.SetWindowPos(ourApp, HWND_NOTOPMOST, 0, 0, 0, 0, 0x0001 | 0x0002);
+
+            // Attach threads for reliable focus
+            User32.INSTANCE.AttachThreadInput(new DWORD(currentThread), new DWORD(targetThread), true);
+            User32.INSTANCE.SetForegroundWindow(popup);
+            User32.INSTANCE.SendMessage(fieldHwnd[0], 0x0007, new WPARAM(0), new LPARAM(0)); // WM_SETFOCUS
+            Thread.sleep(100);
+            User32.INSTANCE.AttachThreadInput(new DWORD(currentThread), new DWORD(targetThread), false);
+
+            // Select all and type
+            User32.INSTANCE.SendMessage(fieldHwnd[0], 0x00B1, new WPARAM(0), new LPARAM(-1)); // EM_SETSEL
+            Thread.sleep(30);
 
             Robot robot = new Robot();
-            robot.mouseMove(cx, cy);
-            Thread.sleep(100);
-
-            // Single click to focus
-            robot.mousePress(InputEvent.BUTTON1_DOWN_MASK);
-            Thread.sleep(80);
-            robot.mouseRelease(InputEvent.BUTTON1_DOWN_MASK);
-            Thread.sleep(150);
-
-            // Ctrl+A to select all, then type
-            robot.keyPress(java.awt.event.KeyEvent.VK_CONTROL);
-            robot.keyPress(java.awt.event.KeyEvent.VK_A);
-            robot.keyRelease(java.awt.event.KeyEvent.VK_A);
-            robot.keyRelease(java.awt.event.KeyEvent.VK_CONTROL);
-            Thread.sleep(80);
-
+            robot.setAutoDelay(15);
             for (char c : amount.toCharArray()) {
-                int keyCode = java.awt.event.KeyEvent.getExtendedKeyCodeForChar(c);
-                if (keyCode != java.awt.event.KeyEvent.VK_UNDEFINED) {
-                    robot.keyPress(keyCode);
-                    robot.keyRelease(keyCode);
-                    Thread.sleep(40);
+                int key = java.awt.event.KeyEvent.getExtendedKeyCodeForChar(c);
+                if (key != java.awt.event.KeyEvent.VK_UNDEFINED) {
+                    robot.keyPress(key);
+                    robot.keyRelease(key);
                 }
+            }
+            Thread.sleep(50);
+
+            // Restore our app
+            if (ourApp != null) {
+                User32.INSTANCE.SetWindowPos(ourApp, HWND_TOPMOST, 0, 0, 0, 0, 0x0001 | 0x0002);
+                User32.INSTANCE.SetForegroundWindow(ourApp);
             }
         } catch (Exception e) {
             e.printStackTrace();

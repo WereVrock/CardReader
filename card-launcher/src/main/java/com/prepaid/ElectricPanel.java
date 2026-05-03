@@ -41,7 +41,7 @@ public class ElectricPanel extends JPanel {
         JPanel controls = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
 
         readButton = new JButton("Read");
-        JButton testBtn = new JButton("Test Memo");
+        JButton testBtn = new JButton("Test");
         JLabel moneyLabel = new JLabel("Amount:");
         moneyField = new JTextField(8);
         loadButton = new JButton("Load");
@@ -231,8 +231,7 @@ private void onLoad() {
             NanometController.demotePopup();
             NanometController.setAmount(amount);
             Thread.sleep(500);
-            String result = NanometController.clickLoad();
-            handleResult(result);
+            NanometController.clickLoad();
             topFrame.setAlwaysOnTop(wasOnTop);
             topFrame.toFront();
         } catch (Exception ex) {
@@ -267,22 +266,25 @@ private void onLoad() {
         }
     }
 
-    private void onTestMemo() {
+private void onTestMemo() {
+        String amount = moneyField.getText().trim();
+        if (amount.isEmpty()) {
+            displayMemoText("Enter an amount first.");
+            return;
+        }
         try {
             if (!NanometController.isPopupOpen()) {
-                String debug = NanometController.queryDatabase(
-                    "SELECT C_No, C_Name, C_MNo FROM Customer WHERE C_No LIKE '%7%' OR C_MNo LIKE '%78098%'");
-                displayMemoText("=== DB Debug ===\n" + debug);
+                displayMemoText("Power Purchase window is not open.");
                 return;
             }
-            String raw = NanometController.readMemoViaClipboard();
-            displayParsedInfo(raw);
+            NanometController.setAmount(amount);
+            displayMemoText("Amount set to: " + amount);
         } catch (Exception ex) {
             displayMemoText("Error: " + ex.getMessage());
         }
     }
 
-    private void onDbViewer() {
+private void onDbViewer() {
         JDialog dialog = new JDialog((javax.swing.JFrame) SwingUtilities.getWindowAncestor(this), "Database Viewer", false);
         dialog.setSize(900, 600);
         dialog.setLocationRelativeTo(this);
