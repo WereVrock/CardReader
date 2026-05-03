@@ -178,8 +178,26 @@ private void onRead() {
             }
 
             NanometController.demotePopup();
-            String result = NanometController.clickReadCard();
-            handleResult(result);
+            NanometController.clickReadCard();
+
+            // Poll for memo content instead of fixed wait
+            String raw = "";
+            for (int i = 0; i < 15; i++) {
+                Thread.sleep(300);
+                raw = NanometController.readMemoViaClipboard();
+                if (raw != null && raw.contains("User code")) break;
+            }
+
+            if (raw == null || !raw.contains("User code")) {
+                displayMemoText(raw != null ? raw : "(No data)");
+                setStatus(false);
+            } else {
+                displayParsedInfo(raw);
+                boolean hasErrors = raw.toLowerCase().contains("error") ||
+                    raw.toLowerCase().contains("has not been plugged in") ||
+                    raw.toLowerCase().contains("fail");
+                setStatus(!hasErrors);
+            }
 
             topFrame.setAlwaysOnTop(true);
             topFrame.toFront();
@@ -189,7 +207,7 @@ private void onRead() {
         }
     }
 
-    private void onLoad() {
+private void onLoad() {
         String amount = moneyField.getText().trim();
         if (amount.isEmpty()) {
             JOptionPane.showMessageDialog(this, "Please enter an amount.");

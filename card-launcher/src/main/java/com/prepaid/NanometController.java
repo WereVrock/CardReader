@@ -270,34 +270,33 @@ public static void setAmount(String amount) {
         if (fieldHwnd[0] == null) return;
 
         try {
-            // Click the field to focus it
+            User32.INSTANCE.ShowWindow(popup, 9);
+            User32.INSTANCE.SetForegroundWindow(popup);
+            Thread.sleep(300);
+
             RECT r = new RECT();
             User32.INSTANCE.GetWindowRect(fieldHwnd[0], r);
-            int cx = r.left + (r.right - r.left) / 2;
-            int cy = r.top + (r.bottom - r.top) / 2;
+            double scale = java.awt.Toolkit.getDefaultToolkit().getScreenResolution() / 96.0;
+            int cx = (int)((r.left + (r.right - r.left) / 2) / scale);
+            int cy = (int)((r.top + (r.bottom - r.top) / 2) / scale);
 
             Robot robot = new Robot();
             robot.mouseMove(cx, cy);
-            robot.mousePress(InputEvent.BUTTON1_DOWN_MASK);
-            Thread.sleep(100);
-            robot.mouseRelease(InputEvent.BUTTON1_DOWN_MASK);
-            Thread.sleep(200);
-
-            // Triple click to select all existing content
-            robot.mousePress(InputEvent.BUTTON1_DOWN_MASK);
-            Thread.sleep(50);
-            robot.mouseRelease(InputEvent.BUTTON1_DOWN_MASK);
-            Thread.sleep(50);
-            robot.mousePress(InputEvent.BUTTON1_DOWN_MASK);
-            Thread.sleep(50);
-            robot.mouseRelease(InputEvent.BUTTON1_DOWN_MASK);
-            Thread.sleep(50);
-            robot.mousePress(InputEvent.BUTTON1_DOWN_MASK);
-            Thread.sleep(50);
-            robot.mouseRelease(InputEvent.BUTTON1_DOWN_MASK);
             Thread.sleep(100);
 
-            // Type the amount
+            // Single click to focus
+            robot.mousePress(InputEvent.BUTTON1_DOWN_MASK);
+            Thread.sleep(80);
+            robot.mouseRelease(InputEvent.BUTTON1_DOWN_MASK);
+            Thread.sleep(150);
+
+            // Ctrl+A to select all, then type
+            robot.keyPress(java.awt.event.KeyEvent.VK_CONTROL);
+            robot.keyPress(java.awt.event.KeyEvent.VK_A);
+            robot.keyRelease(java.awt.event.KeyEvent.VK_A);
+            robot.keyRelease(java.awt.event.KeyEvent.VK_CONTROL);
+            Thread.sleep(80);
+
             for (char c : amount.toCharArray()) {
                 int keyCode = java.awt.event.KeyEvent.getExtendedKeyCodeForChar(c);
                 if (keyCode != java.awt.event.KeyEvent.VK_UNDEFINED) {
@@ -326,40 +325,39 @@ User32.INSTANCE.SetWindowPos(popup, HWND_NOTOPMOST, 0, 0, 0, 0, 0x0001 | 0x0002)
 }
 
 public static String readMemoViaClipboard() {
-HWND popup = User32.INSTANCE.FindWindow(null, POPUP_WINDOW);
-if (popup == null) return "Power purchase window not found.";
+        HWND popup = User32.INSTANCE.FindWindow(null, POPUP_WINDOW);
+        if (popup == null) return "Power purchase window not found.";
 
-final HWND[] memoHwnd = {null};
-User32.INSTANCE.EnumChildWindows(popup, (child, data) -> {
-char[] cls = new char[512];
-User32.INSTANCE.GetClassName(child, cls, 512);
-if (new String(cls).trim().equals("TMemo")) {
-memoHwnd[0] = child;
-return false;
-}
-return true;
-}, null);
+        final HWND[] memoHwnd = {null};
+        User32.INSTANCE.EnumChildWindows(popup, (child, data) -> {
+            char[] cls = new char[512];
+            User32.INSTANCE.GetClassName(child, cls, 512);
+            if (new String(cls).trim().equals("TMemo")) {
+                memoHwnd[0] = child;
+                return false;
+            }
+            return true;
+        }, null);
 
-if (memoHwnd[0] == null) return "TMemo not found.";
+        if (memoHwnd[0] == null) return "TMemo not found.";
 
-try {
-// Select all text via EM_SETSEL (works without focus or keyboard)
-User32.INSTANCE.SendMessage(memoHwnd[0], 0x00B1, new WPARAM(0), new LPARAM(-1)); // EM_SETSEL 0,-1
+        try {
+            // Select all text via EM_SETSEL without needing focus
+            User32.INSTANCE.SendMessage(memoHwnd[0], 0x00B1, new WPARAM(0), new LPARAM(-1));
+            Thread.sleep(100);
+            // Copy via WM_COPY
+            User32.INSTANCE.SendMessage(memoHwnd[0], 0x0301, new WPARAM(0), new LPARAM(0));
+            Thread.sleep(300);
 
-// Copy via WM_COPY
-User32.INSTANCE.SendMessage(memoHwnd[0], 0x0301, new WPARAM(0), new LPARAM(0)); // WM_COPY
+            String clip = (String) java.awt.Toolkit.getDefaultToolkit()
+                .getSystemClipboard().getData(java.awt.datatransfer.DataFlavor.stringFlavor);
+            if (clip != null && !clip.trim().isEmpty()) return clip.trim();
+        } catch (Exception e) {
+            return "Error: " + e.getMessage();
+        }
 
-Thread.sleep(200);
-String clip = (String) java.awt.Toolkit.getDefaultToolkit()
-.getSystemClipboard().getData(java.awt.datatransfer.DataFlavor.stringFlavor);
-if (clip != null && !clip.trim().isEmpty()) return clip.trim();
-
-} catch (Exception e) {
-return "Error: " + e.getMessage();
-}
-
-return "(Could not read via clipboard)";
-}
+        return "(Could not read via clipboard)";
+    }
 
 public static String lookupCustomerName(String userCode) {
         try {
