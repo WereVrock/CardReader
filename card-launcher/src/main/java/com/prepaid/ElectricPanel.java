@@ -160,51 +160,62 @@ private void handleResult(String result) {
 
 private void onRead() {
         setStatus(null);
-        try {
-            javax.swing.JFrame topFrame = (javax.swing.JFrame) SwingUtilities.getWindowAncestor(this);
-            topFrame.setAlwaysOnTop(false);
+        readButton.setEnabled(false);
+        new Thread(() -> {
+            try {
+                javax.swing.JFrame topFrame = (javax.swing.JFrame) SwingUtilities.getWindowAncestor(this);
+                SwingUtilities.invokeLater(() -> topFrame.setAlwaysOnTop(false));
 
-            if (!NanometController.isPopupOpen()) {
-                NanometController.clickPowerPurchase();
-                Thread.sleep(1500);
-            }
+                if (!NanometController.isPopupOpen()) {
+                    NanometController.clickPowerPurchase();
+                    Thread.sleep(1500);
+                }
 
-            if (!NanometController.isPopupOpen()) {
-                displayMemoText("Could not open Power Purchase window.");
+                if (!NanometController.isPopupOpen()) {
+                    SwingUtilities.invokeLater(() -> displayMemoText("Could not open Power Purchase window."));
+                    setStatus(false);
+                    SwingUtilities.invokeLater(() -> topFrame.setAlwaysOnTop(true));
+                    return;
+                }
+
+                NanometController.demotePopup();
+                NanometController.clickReadCard();
+
+                DialogDismisser.getAndClearLastDismissed();
+                String raw = "";
+                for (int i = 0; i < 20; i++) {
+                    Thread.sleep(100);
+                    raw = NanometController.readMemoViaClipboard();
+                    if (raw != null && raw.contains("User code")) break;
+                    if (DialogDismisser.getAndClearLastDismissed() != null) {
+                        raw = NanometController.readMemoViaClipboard();
+                        break;
+                    }
+                }
+
+                final String finalRaw = raw;
+                if (finalRaw == null || !finalRaw.contains("User code")) {
+                    SwingUtilities.invokeLater(() -> displayMemoText(finalRaw != null ? finalRaw : "(No data)"));
+                    setStatus(false);
+                } else {
+                    SwingUtilities.invokeLater(() -> displayParsedInfo(finalRaw));
+                    boolean hasErrors = finalRaw.toLowerCase().contains("error") ||
+                        finalRaw.toLowerCase().contains("has not been plugged in") ||
+                        finalRaw.toLowerCase().contains("fail");
+                    setStatus(!hasErrors);
+                }
+
+                SwingUtilities.invokeLater(() -> {
+                    topFrame.setAlwaysOnTop(true);
+                    topFrame.toFront();
+                });
+            } catch (Exception ex) {
+                SwingUtilities.invokeLater(() -> displayMemoText("Exception: " + ex.getMessage()));
                 setStatus(false);
-                topFrame.setAlwaysOnTop(true);
-                topFrame.toFront();
-                return;
+            } finally {
+                SwingUtilities.invokeLater(() -> readButton.setEnabled(true));
             }
-
-            NanometController.demotePopup();
-            NanometController.clickReadCard();
-
-            // Poll for memo content instead of fixed wait
-            String raw = "";
-            for (int i = 0; i < 15; i++) {
-                Thread.sleep(300);
-                raw = NanometController.readMemoViaClipboard();
-                if (raw != null && raw.contains("User code")) break;
-            }
-
-            if (raw == null || !raw.contains("User code")) {
-                displayMemoText(raw != null ? raw : "(No data)");
-                setStatus(false);
-            } else {
-                displayParsedInfo(raw);
-                boolean hasErrors = raw.toLowerCase().contains("error") ||
-                    raw.toLowerCase().contains("has not been plugged in") ||
-                    raw.toLowerCase().contains("fail");
-                setStatus(!hasErrors);
-            }
-
-            topFrame.setAlwaysOnTop(true);
-            topFrame.toFront();
-        } catch (Exception ex) {
-            displayMemoText("Exception: " + ex.getMessage());
-            setStatus(false);
-        }
+        }).start();
     }
 
 private void onLoad() {
@@ -214,33 +225,40 @@ private void onLoad() {
             return;
         }
         setStatus(null);
-        try {
-            javax.swing.JFrame topFrame = (javax.swing.JFrame) SwingUtilities.getWindowAncestor(this);
-            boolean wasOnTop = topFrame.isAlwaysOnTop();
-            if (!NanometController.isPopupOpen()) {
-                topFrame.setAlwaysOnTop(false);
-                NanometController.clickPowerPurchase();
-                Thread.sleep(800);
-            }
-            if (!NanometController.isPopupOpen()) {
-                displayMemoText("Could not open Power Purchase window.");
+        loadButton.setEnabled(false);
+        new Thread(() -> {
+            try {
+                javax.swing.JFrame topFrame = (javax.swing.JFrame) SwingUtilities.getWindowAncestor(this);
+                boolean wasOnTop = topFrame.isAlwaysOnTop();
+                if (!NanometController.isPopupOpen()) {
+                    SwingUtilities.invokeLater(() -> topFrame.setAlwaysOnTop(false));
+                    NanometController.clickPowerPurchase();
+                    Thread.sleep(1500);
+                }
+                if (!NanometController.isPopupOpen()) {
+                    SwingUtilities.invokeLater(() -> displayMemoText("Could not open Power Purchase window."));
+                    setStatus(false);
+                    SwingUtilities.invokeLater(() -> topFrame.setAlwaysOnTop(wasOnTop));
+                    return;
+                }
+                NanometController.demotePopup();
+                NanometController.setAmount(amount);
+                Thread.sleep(200);
+                NanometController.clickLoad();
+                SwingUtilities.invokeLater(() -> {
+                    topFrame.setAlwaysOnTop(wasOnTop);
+                    topFrame.toFront();
+                });
+            } catch (Exception ex) {
+                SwingUtilities.invokeLater(() -> displayMemoText("Error: " + ex.getMessage()));
                 setStatus(false);
-                topFrame.setAlwaysOnTop(wasOnTop);
-                return;
+            } finally {
+                SwingUtilities.invokeLater(() -> loadButton.setEnabled(true));
             }
-            NanometController.demotePopup();
-            NanometController.setAmount(amount);
-            Thread.sleep(500);
-            NanometController.clickLoad();
-            topFrame.setAlwaysOnTop(wasOnTop);
-            topFrame.toFront();
-        } catch (Exception ex) {
-            displayMemoText("Error: " + ex.getMessage());
-            setStatus(false);
-        }
+        }).start();
     }
 
-    private void onCompare() {
+private void onCompare() {
         if (snapshotBefore == null) {
             snapshotBefore = NanometController.fullSnapshot();
             displayMemoText("=== SNAPSHOT TAKEN ===\n" + snapshotBefore +
@@ -267,18 +285,17 @@ private void onLoad() {
     }
 
 private void onTestMemo() {
-        String amount = moneyField.getText().trim();
-        if (amount.isEmpty()) {
-            displayMemoText("Enter an amount first.");
-            return;
-        }
         try {
             if (!NanometController.isPopupOpen()) {
                 displayMemoText("Power Purchase window is not open.");
                 return;
             }
-            NanometController.setAmount(amount);
-            displayMemoText("Amount set to: " + amount);
+            String raw = NanometController.readMemoViaClipboard();
+            if (raw != null && raw.contains("User code")) {
+                displayParsedInfo(raw);
+            } else {
+                displayMemoText(raw != null ? raw : "(No data)");
+            }
         } catch (Exception ex) {
             displayMemoText("Error: " + ex.getMessage());
         }

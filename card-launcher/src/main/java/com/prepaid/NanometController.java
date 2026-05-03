@@ -266,48 +266,26 @@ public static void setAmount(String amount) {
             return true;
         }, null);
 
-        if (fieldHwnd[0] == null) return;
+        if (fieldHwnd[0] == null) {
+            System.out.println("DEBUG: TDBNumberEditEh not found");
+            return;
+        }
 
         try {
-            HWND ourApp = User32.INSTANCE.FindWindow(null, "Prepaid Card Manager");
-            HWND HWND_NOTOPMOST = new HWND(new Pointer(-2));
-            HWND HWND_TOPMOST   = new HWND(new Pointer(-1));
-
-            IntByReference pid = new IntByReference();
-            int targetThread  = User32.INSTANCE.GetWindowThreadProcessId(popup, pid);
-            int currentThread = Kernel32.INSTANCE.GetCurrentThreadId();
-
-            // Remove always-on-top temporarily
-            if (ourApp != null)
-                User32.INSTANCE.SetWindowPos(ourApp, HWND_NOTOPMOST, 0, 0, 0, 0, 0x0001 | 0x0002);
-
-            // Attach threads for reliable focus
-            User32.INSTANCE.AttachThreadInput(new DWORD(currentThread), new DWORD(targetThread), true);
-            User32.INSTANCE.SetForegroundWindow(popup);
-            User32.INSTANCE.SendMessage(fieldHwnd[0], 0x0007, new WPARAM(0), new LPARAM(0)); // WM_SETFOCUS
-            Thread.sleep(100);
-            User32.INSTANCE.AttachThreadInput(new DWORD(currentThread), new DWORD(targetThread), false);
-
-            // Select all and type
+            // Select all first
             User32.INSTANCE.SendMessage(fieldHwnd[0], 0x00B1, new WPARAM(0), new LPARAM(-1)); // EM_SETSEL
-            Thread.sleep(30);
-
-            Robot robot = new Robot();
-            robot.setAutoDelay(15);
-            for (char c : amount.toCharArray()) {
-                int key = java.awt.event.KeyEvent.getExtendedKeyCodeForChar(c);
-                if (key != java.awt.event.KeyEvent.VK_UNDEFINED) {
-                    robot.keyPress(key);
-                    robot.keyRelease(key);
-                }
-            }
             Thread.sleep(50);
 
-            // Restore our app
-            if (ourApp != null) {
-                User32.INSTANCE.SetWindowPos(ourApp, HWND_TOPMOST, 0, 0, 0, 0, 0x0001 | 0x0002);
-                User32.INSTANCE.SetForegroundWindow(ourApp);
+            // Send each char directly to the control handle
+            for (char c : amount.toCharArray()) {
+                User32.INSTANCE.SendMessage(fieldHwnd[0], 0x0102, new WPARAM(c), new LPARAM(0)); // WM_CHAR
+                Thread.sleep(20);
             }
+
+            // Verify
+            char[] verify = new char[32];
+            User32.INSTANCE.GetWindowText(fieldHwnd[0], verify, 32);
+            System.out.println("DEBUG field after typing: [" + new String(verify).trim() + "]");
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -345,12 +323,11 @@ public static String readMemoViaClipboard() {
         if (memoHwnd[0] == null) return "TMemo not found.";
 
         try {
-            // Select all text via EM_SETSEL without needing focus
-            User32.INSTANCE.SendMessage(memoHwnd[0], 0x00B1, new WPARAM(0), new LPARAM(-1));
-            Thread.sleep(100);
-            // Copy via WM_COPY
-            User32.INSTANCE.SendMessage(memoHwnd[0], 0x0301, new WPARAM(0), new LPARAM(0));
-            Thread.sleep(300);
+            // Select all and copy without needing focus
+            User32.INSTANCE.SendMessage(memoHwnd[0], 0x00B1, new WPARAM(0), new LPARAM(-1)); // EM_SETSEL
+            Thread.sleep(50);
+            User32.INSTANCE.SendMessage(memoHwnd[0], 0x0301, new WPARAM(0), new LPARAM(0)); // WM_COPY
+            Thread.sleep(150);
 
             String clip = (String) java.awt.Toolkit.getDefaultToolkit()
                 .getSystemClipboard().getData(java.awt.datatransfer.DataFlavor.stringFlavor);
