@@ -25,12 +25,13 @@ public class ElectricPanel extends JPanel {
     private javax.swing.JTextPane infoArea;
     private JButton readButton;
     private JButton loadButton;
+    private JLabel readStatus;
+    private JLabel loadStatus;
 
-public ElectricPanel() {
+    public ElectricPanel() {
         setLayout(new BorderLayout(10, 10));
         setBorder(BorderFactory.createTitledBorder("Electric"));
 
-        // Row 1: name
         nameField = new JTextField();
         nameField.setEditable(false);
         nameField.setFont(new Font("SansSerif", Font.BOLD, 15));
@@ -38,27 +39,30 @@ public ElectricPanel() {
         nameField.setBorder(BorderFactory.createEmptyBorder(4, 6, 4, 6));
         nameField.setOpaque(false);
 
-        // Row 2: controls
         JPanel controls = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
 
-        readButton = new JButton("Read");
+        readButton  = new JButton("Read");
+        readStatus  = makeStatusLabel();
         JButton testBtn = new JButton("Test Memo");
         JLabel moneyLabel = new JLabel("Amount:");
-        moneyField = new JTextField(8);
-        loadButton = new JButton("Load");
+        moneyField  = new JTextField(8);
+        loadButton  = new JButton("Load");
+        loadStatus  = makeStatusLabel();
         JLabel kwhLabel = new JLabel("kWh:");
-        kwhField = new JTextField(7);
+        kwhField    = new JTextField(7);
         kwhField.setEditable(false);
         JLabel priceLabel = new JLabel("Price/kWh:");
-        priceField = new JTextField(7);
+        priceField  = new JTextField(7);
         priceField.setEditable(false);
         JButton compareBtn = new JButton("Compare DB");
 
         controls.add(readButton);
+        controls.add(readStatus);
         controls.add(testBtn);
         controls.add(moneyLabel);
         controls.add(moneyField);
         controls.add(loadButton);
+        controls.add(loadStatus);
         controls.add(kwhLabel);
         controls.add(kwhField);
         controls.add(priceLabel);
@@ -87,14 +91,11 @@ public ElectricPanel() {
                     String p = priceField.getText().trim();
                     String a = moneyField.getText().trim();
                     if (p.isEmpty() || p.equals("N/A") || a.isEmpty()) { kwhField.setText(""); return; }
-                    double price = Double.parseDouble(p.replace(",", "."));
+                    double price  = Double.parseDouble(p.replace(",", "."));
                     double amount = Double.parseDouble(a.replace(",", "."));
                     if (price == 0) { kwhField.setText(""); return; }
-                    double result = amount / price;
-                    System.out.println("DEBUG kwh: " + amount + " / " + price + " = " + result);
-                    kwhField.setText(String.format("%.2f", result));
+                    kwhField.setText(String.format("%.2f", amount / price));
                 } catch (Exception ex) {
-                    System.out.println("DEBUG kwh error: " + ex.getMessage());
                     kwhField.setText("");
                 }
             }
@@ -106,7 +107,48 @@ public ElectricPanel() {
         testBtn.addActionListener(e -> onTestMemo());
     }
 
-private void onRead() {
+    private JLabel makeStatusLabel() {
+        JLabel l = new JLabel("●");
+        l.setFont(new Font("Dialog", Font.BOLD, 18));
+        l.setForeground(java.awt.Color.LIGHT_GRAY);
+        return l;
+    }
+
+    private void setStatus(JLabel label, Boolean success) {
+        SwingUtilities.invokeLater(() -> {
+            if (success == null) {
+                label.setText("●");
+                label.setForeground(java.awt.Color.LIGHT_GRAY);
+            } else if (success) {
+                label.setText("✔");
+                label.setForeground(new java.awt.Color(0, 160, 0));
+            } else {
+                label.setText("✘");
+                label.setForeground(java.awt.Color.RED);
+            }
+        });
+    }
+
+    private void handleResult(String result, JLabel statusLabel) {
+        if (result == null) {
+            setStatus(statusLabel, null);
+            SoundPlayer.playNeutral();
+            return;
+        }
+        String lower = result.toLowerCase();
+        if (lower.contains("error") || lower.contains("fail")) {
+            setStatus(statusLabel, false);
+            SoundPlayer.playError();
+            displayMemoText(result);
+        } else {
+            setStatus(statusLabel, true);
+            SoundPlayer.playSuccess();
+            displayMemoText(result);
+        }
+    }
+
+    private void onRead() {
+        setStatus(readStatus, null);
         try {
             javax.swing.JFrame topFrame = (javax.swing.JFrame) SwingUtilities.getWindowAncestor(this);
             topFrame.setAlwaysOnTop(false);
@@ -118,21 +160,55 @@ private void onRead() {
 
             if (!NanometController.isPopupOpen()) {
                 displayMemoText("Could not open Power Purchase window.");
+                setStatus(readStatus, false);
                 topFrame.setAlwaysOnTop(true);
                 topFrame.toFront();
                 return;
             }
 
             NanometController.demotePopup();
-            NanometController.clickReadCard();
-            Thread.sleep(2000);
-            String raw = NanometController.readMemoViaClipboard();
-            displayParsedInfo(raw);
+            String result = NanometController.clickReadCard();
+            handleResult(result, readStatus);
 
             topFrame.setAlwaysOnTop(true);
             topFrame.toFront();
         } catch (Exception ex) {
             displayMemoText("Exception: " + ex.getMessage());
+            setStatus(readStatus, false);
+        }
+    }
+
+    private void onLoad() {
+        String amount = moneyField.getText().trim();
+        if (amount.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "Please enter an amount.");
+            return;
+        }
+        setStatus(loadStatus, null);
+        try {
+            javax.swing.JFrame topFrame = (javax.swing.JFrame) SwingUtilities.getWindowAncestor(this);
+            boolean wasOnTop = topFrame.isAlwaysOnTop();
+            if (!NanometController.isPopupOpen()) {
+                topFrame.setAlwaysOnTop(false);
+                NanometController.clickPowerPurchase();
+                Thread.sleep(800);
+            }
+            if (!NanometController.isPopupOpen()) {
+                displayMemoText("Could not open Power Purchase window.");
+                setStatus(loadStatus, false);
+                topFrame.setAlwaysOnTop(wasOnTop);
+                return;
+            }
+            NanometController.demotePopup();
+            NanometController.setAmount(amount);
+            Thread.sleep(500);
+            String result = NanometController.clickLoad();
+            handleResult(result, loadStatus);
+            topFrame.setAlwaysOnTop(wasOnTop);
+            topFrame.toFront();
+        } catch (Exception ex) {
+            displayMemoText("Error: " + ex.getMessage());
+            setStatus(loadStatus, false);
         }
     }
 
@@ -140,7 +216,7 @@ private void onRead() {
         if (snapshotBefore == null) {
             snapshotBefore = NanometController.fullSnapshot();
             displayMemoText("=== SNAPSHOT TAKEN ===\n" + snapshotBefore +
-                "\n\nNow insert card and click Read Card in Nanomet.\nThen click Compare DB again to see what changed.");
+                "\n\nNow insert card and click Read Card in Nanomet.\nThen click Compare DB again.");
         } else {
             String after = NanometController.fullSnapshot();
             StringBuilder diff = new StringBuilder();
@@ -162,31 +238,16 @@ private void onRead() {
         }
     }
 
-    private void onLoad() {
-        String amount = moneyField.getText().trim();
-        if (amount.isEmpty()) {
-            JOptionPane.showMessageDialog(this, "Please enter an amount.");
-            return;
-        }
+    private void onTestMemo() {
         try {
-            javax.swing.JFrame topFrame = (javax.swing.JFrame) SwingUtilities.getWindowAncestor(this);
-            boolean wasOnTop = topFrame.isAlwaysOnTop();
             if (!NanometController.isPopupOpen()) {
-                topFrame.setAlwaysOnTop(false);
-                NanometController.clickPowerPurchase();
-                Thread.sleep(800);
-            }
-            if (!NanometController.isPopupOpen()) {
-                displayMemoText("Could not open Power Purchase window.");
-                topFrame.setAlwaysOnTop(wasOnTop);
+                String debug = NanometController.queryDatabase(
+                    "SELECT C_No, C_Name, C_MNo FROM Customer WHERE C_No LIKE '%7%' OR C_MNo LIKE '%78098%'");
+                displayMemoText("=== DB Debug ===\n" + debug);
                 return;
             }
-            NanometController.demotePopup();
-            NanometController.setAmount(amount);
-            Thread.sleep(200);
-            NanometController.clickLoad();
-            topFrame.setAlwaysOnTop(wasOnTop);
-            topFrame.toFront();
+            String raw = NanometController.readMemoViaClipboard();
+            displayParsedInfo(raw);
         } catch (Exception ex) {
             displayMemoText("Error: " + ex.getMessage());
         }
@@ -260,11 +321,10 @@ private void onRead() {
         javax.swing.text.StyleConstants.setFontSize(errorStyle, 12);
 
         String userName = extract(raw, "User code");
-        String meterNo = extract(raw, "Meter No");
+        String meterNo  = extract(raw, "Meter No");
         String lastAmount = extract(raw, "Amount of power purchase");
-        String lastDate = extract(raw, "Date of power purchase");
-        // Extract kWh from DB section only (after "Previous power purchase information")
-        String lastQty = extractFromSection(raw, "Previous power purchase information", "Quantity of power purchase");
+        String lastDate   = extract(raw, "Date of power purchase");
+        String lastQty    = extractFromSection(raw, "Previous power purchase information", "Quantity of power purchase");
 
         String dbName = NanometController.lookupCustomerName(userName);
         if (dbName == null) dbName = NanometController.lookupCustomerByMeter(meterNo);
@@ -272,13 +332,11 @@ private void onRead() {
         java.util.List<String> errors = new java.util.ArrayList<>();
         for (String line : raw.split("\n")) {
             String lower = line.toLowerCase();
-            if (lower.contains("error") || lower.contains("has not been plugged in")) {
+            if (lower.contains("error") || lower.contains("has not been plugged in"))
                 errors.add(line.trim());
-            }
         }
 
-        String price = lastQty.equals("N/A") || lastAmount.equals("N/A") ? "N/A" :
-            formatPrice(lastAmount, lastQty);
+        String price = lastQty.equals("N/A") || lastAmount.equals("N/A") ? "N/A" : formatPrice(lastAmount, lastQty);
         final String priceFinal = price;
         SwingUtilities.invokeLater(() -> priceField.setText(priceFinal));
 
@@ -292,14 +350,34 @@ private void onRead() {
             appendStyled(doc, "  Date      : " + lastDate + "\n", normal);
             appendStyled(doc, "  Amount    : " + lastAmount + "\n", normal);
             appendStyled(doc, "  kWh       : " + lastQty + "\n", normal);
-
             if (!errors.isEmpty()) {
                 appendStyled(doc, "\nISSUES:\n", errorStyle);
-                for (String err : errors) {
+                for (String err : errors)
                     appendStyled(doc, "  " + err + "\n", errorStyle);
-                }
             }
         } catch (Exception ignored) {}
+    }
+
+    private void displayMemoText(String text) {
+        javax.swing.text.StyledDocument doc = infoArea.getStyledDocument();
+        try { doc.remove(0, doc.getLength()); } catch (Exception ignored) {}
+
+        javax.swing.text.Style normal = infoArea.addStyle("normal", null);
+        javax.swing.text.StyleConstants.setForeground(normal, java.awt.Color.BLACK);
+        javax.swing.text.Style error = infoArea.addStyle("error", null);
+        javax.swing.text.StyleConstants.setForeground(error, java.awt.Color.RED);
+        javax.swing.text.StyleConstants.setBold(error, true);
+        javax.swing.text.Style warning = infoArea.addStyle("warning", null);
+        javax.swing.text.StyleConstants.setForeground(warning, new java.awt.Color(180, 100, 0));
+        javax.swing.text.StyleConstants.setBold(warning, true);
+
+        for (String line : text.split("\n")) {
+            javax.swing.text.Style style = normal;
+            String lower = line.toLowerCase();
+            if (lower.contains("error") || lower.contains("has not been plugged in")) style = error;
+            else if (lower.contains("warning") || lower.contains("alarm")) style = warning;
+            try { doc.insertString(doc.getLength(), line + "\n", style); } catch (Exception ignored) {}
+        }
     }
 
     private String formatPrice(String amount, String kwh) {
@@ -308,17 +386,13 @@ private void onRead() {
             double k = Double.parseDouble(kwh.replaceAll("[^0-9.]", "").trim());
             if (k == 0) return "N/A";
             return String.format("%.4f", a / k);
-        } catch (Exception e) {
-            return "N/A";
-        }
+        } catch (Exception e) { return "N/A"; }
     }
 
     private String extractFromSection(String text, String sectionHeader, String key) {
         boolean inSection = false;
         for (String line : text.split("\n")) {
-            if (line.toLowerCase().contains(sectionHeader.toLowerCase())) {
-                inSection = true;
-            }
+            if (line.toLowerCase().contains(sectionHeader.toLowerCase())) inSection = true;
             if (inSection && line.toLowerCase().contains(key.toLowerCase())) {
                 int colon = line.indexOf(':');
                 if (colon >= 0) return line.substring(colon + 1).trim();
@@ -341,69 +415,5 @@ private void onRead() {
         try { doc.insertString(doc.getLength(), text, style); } catch (Exception ignored) {}
     }
 
-    private void displayMemoText(String text) {
-        javax.swing.text.StyledDocument doc = infoArea.getStyledDocument();
-        try { doc.remove(0, doc.getLength()); } catch (Exception ignored) {}
-
-        javax.swing.text.Style normal = infoArea.addStyle("normal", null);
-        javax.swing.text.StyleConstants.setForeground(normal, java.awt.Color.BLACK);
-
-        javax.swing.text.Style error = infoArea.addStyle("error", null);
-        javax.swing.text.StyleConstants.setForeground(error, java.awt.Color.RED);
-        javax.swing.text.StyleConstants.setBold(error, true);
-
-        javax.swing.text.Style warning = infoArea.addStyle("warning", null);
-        javax.swing.text.StyleConstants.setForeground(warning, new java.awt.Color(180, 100, 0));
-        javax.swing.text.StyleConstants.setBold(warning, true);
-
-        for (String line : text.split("\n")) {
-            javax.swing.text.Style style = normal;
-            String lower = line.toLowerCase();
-            if (lower.contains("error") || lower.contains("has not been plugged in")) {
-                style = error;
-            } else if (lower.contains("warning") || lower.contains("alarm")) {
-                style = warning;
-            }
-            try {
-                doc.insertString(doc.getLength(), line + "\n", style);
-            } catch (Exception ignored) {}
-        }
-    }
-
-    private void onTestMemo() {
-        try {
-            if (!NanometController.isPopupOpen()) {
-                String debug = NanometController.queryDatabase(
-                    "SELECT C_No, C_Name, C_MNo FROM Customer WHERE C_No LIKE '%7%' OR C_MNo LIKE '%78098%'");
-                displayMemoText("=== DB Debug ===\n" + debug);
-                return;
-            }
-            String raw = NanometController.readMemoViaClipboard();
-            displayParsedInfo(raw);
-        } catch (Exception ex) {
-            displayMemoText("Error: " + ex.getMessage());
-        }
-    }
-
-    private void scanChildren(com.sun.jna.platform.win32.WinDef.HWND parent, int depth) {
-        String indent = "  ".repeat(depth);
-        com.sun.jna.platform.win32.User32.INSTANCE.EnumChildWindows(parent, (child, data) -> {
-            char[] text = new char[512];
-            char[] cls = new char[512];
-            com.sun.jna.platform.win32.User32.INSTANCE.GetWindowText(child, text, 512);
-            com.sun.jna.platform.win32.User32.INSTANCE.GetClassName(child, cls, 512);
-            String t = new String(text).trim();
-            String c = new String(cls).trim();
-            javax.swing.text.StyledDocument doc = infoArea.getStyledDocument();
-            javax.swing.text.Style normal = infoArea.getStyle("normal");
-            if (normal == null) normal = infoArea.addStyle("normal", null);
-            appendStyled(doc, indent + "Class: " + c + " | Text: " + t + "\n", normal);
-            scanChildren(child, depth + 1);
-            return true;
-        }, null);
-    }
-
-    public void setKwh(String kwh) {
-        kwhField.setText(kwh);
-    }
+    public void setKwh(String kwh) { kwhField.setText(kwh); }
 }
