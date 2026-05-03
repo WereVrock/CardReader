@@ -25,8 +25,7 @@ public class ElectricPanel extends JPanel {
     private javax.swing.JTextPane infoArea;
     private JButton readButton;
     private JButton loadButton;
-    private JLabel readStatus;
-    private JLabel loadStatus;
+    private JLabel statusIndicator; // single shared indicator
 
     public ElectricPanel() {
         setLayout(new BorderLayout(10, 10));
@@ -41,37 +40,44 @@ public class ElectricPanel extends JPanel {
 
         JPanel controls = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
 
-        readButton  = new JButton("Read");
-        readStatus  = makeStatusLabel();
+        readButton = new JButton("Read");
         JButton testBtn = new JButton("Test Memo");
         JLabel moneyLabel = new JLabel("Amount:");
-        moneyField  = new JTextField(8);
-        loadButton  = new JButton("Load");
-        loadStatus  = makeStatusLabel();
+        moneyField = new JTextField(8);
+        loadButton = new JButton("Load");
         JLabel kwhLabel = new JLabel("kWh:");
-        kwhField    = new JTextField(7);
+        kwhField = new JTextField(7);
         kwhField.setEditable(false);
         JLabel priceLabel = new JLabel("Price/kWh:");
-        priceField  = new JTextField(7);
+        priceField = new JTextField(7);
         priceField.setEditable(false);
         JButton compareBtn = new JButton("Compare DB");
 
         controls.add(readButton);
-        controls.add(readStatus);
         controls.add(testBtn);
         controls.add(moneyLabel);
         controls.add(moneyField);
         controls.add(loadButton);
-        controls.add(loadStatus);
         controls.add(kwhLabel);
         controls.add(kwhField);
         controls.add(priceLabel);
         controls.add(priceField);
         controls.add(compareBtn);
 
+        // Big status indicator on the right
+        statusIndicator = new JLabel("●");
+        statusIndicator.setFont(new Font("Dialog", Font.BOLD, 64));
+        statusIndicator.setForeground(java.awt.Color.LIGHT_GRAY);
+        statusIndicator.setHorizontalAlignment(JLabel.CENTER);
+        statusIndicator.setPreferredSize(new java.awt.Dimension(80, 80));
+
+        JPanel controlsWithStatus = new JPanel(new BorderLayout());
+        controlsWithStatus.add(controls, BorderLayout.CENTER);
+        controlsWithStatus.add(statusIndicator, BorderLayout.EAST);
+
         JPanel topSection = new JPanel(new BorderLayout());
         topSection.add(nameField, BorderLayout.NORTH);
-        topSection.add(controls, BorderLayout.SOUTH);
+        topSection.add(controlsWithStatus, BorderLayout.SOUTH);
 
         infoArea = new javax.swing.JTextPane();
         infoArea.setEditable(false);
@@ -95,9 +101,7 @@ public class ElectricPanel extends JPanel {
                     double amount = Double.parseDouble(a.replace(",", "."));
                     if (price == 0) { kwhField.setText(""); return; }
                     kwhField.setText(String.format("%.2f", amount / price));
-                } catch (Exception ex) {
-                    kwhField.setText("");
-                }
+                } catch (Exception ex) { kwhField.setText(""); }
             }
         });
 
@@ -107,48 +111,55 @@ public class ElectricPanel extends JPanel {
         testBtn.addActionListener(e -> onTestMemo());
     }
 
-    private JLabel makeStatusLabel() {
-        JLabel l = new JLabel("●");
-        l.setFont(new Font("Dialog", Font.BOLD, 18));
-        l.setForeground(java.awt.Color.LIGHT_GRAY);
-        return l;
+    // Called by MainWindow when DialogDismisser auto-dismisses a dialog
+
+public void onDismissed(String msg) {
+        System.out.println("DEBUG onDismissed: " + msg);
+        String lower = msg.toLowerCase();
+        if (lower.contains("error") || lower.contains("fail")) {
+            setStatus(false);
+        } else {
+            setStatus(true);
+        }
     }
 
-    private void setStatus(JLabel label, Boolean success) {
+private void setStatus(Boolean success) {
+        if (statusIndicator == null) return;
         SwingUtilities.invokeLater(() -> {
             if (success == null) {
-                label.setText("●");
-                label.setForeground(java.awt.Color.LIGHT_GRAY);
+                statusIndicator.setText("●");
+                statusIndicator.setForeground(java.awt.Color.LIGHT_GRAY);
             } else if (success) {
-                label.setText("✔");
-                label.setForeground(new java.awt.Color(0, 160, 0));
+                statusIndicator.setText("✔");
+                statusIndicator.setForeground(new java.awt.Color(0, 160, 0));
             } else {
-                label.setText("✘");
-                label.setForeground(java.awt.Color.RED);
+                statusIndicator.setText("✘");
+                statusIndicator.setForeground(java.awt.Color.RED);
             }
+
+            statusIndicator.revalidate();
+            statusIndicator.repaint();
         });
     }
 
-    private void handleResult(String result, JLabel statusLabel) {
-        if (result == null) {
-            setStatus(statusLabel, null);
-            SoundPlayer.playNeutral();
-            return;
-        }
+private void handleResult(String result) {
+        // If null, DialogDismisser already handled the status via onDismissed
+        // Only act if we caught the window ourselves
+        if (result == null) return;
         String lower = result.toLowerCase();
         if (lower.contains("error") || lower.contains("fail")) {
-            setStatus(statusLabel, false);
+            setStatus(false);
             SoundPlayer.playError();
             displayMemoText(result);
         } else {
-            setStatus(statusLabel, true);
+            setStatus(true);
             SoundPlayer.playSuccess();
             displayMemoText(result);
         }
     }
 
-    private void onRead() {
-        setStatus(readStatus, null);
+private void onRead() {
+        setStatus(null);
         try {
             javax.swing.JFrame topFrame = (javax.swing.JFrame) SwingUtilities.getWindowAncestor(this);
             topFrame.setAlwaysOnTop(false);
@@ -160,7 +171,7 @@ public class ElectricPanel extends JPanel {
 
             if (!NanometController.isPopupOpen()) {
                 displayMemoText("Could not open Power Purchase window.");
-                setStatus(readStatus, false);
+                setStatus(false);
                 topFrame.setAlwaysOnTop(true);
                 topFrame.toFront();
                 return;
@@ -168,13 +179,13 @@ public class ElectricPanel extends JPanel {
 
             NanometController.demotePopup();
             String result = NanometController.clickReadCard();
-            handleResult(result, readStatus);
+            handleResult(result);
 
             topFrame.setAlwaysOnTop(true);
             topFrame.toFront();
         } catch (Exception ex) {
             displayMemoText("Exception: " + ex.getMessage());
-            setStatus(readStatus, false);
+            setStatus(false);
         }
     }
 
@@ -184,7 +195,7 @@ public class ElectricPanel extends JPanel {
             JOptionPane.showMessageDialog(this, "Please enter an amount.");
             return;
         }
-        setStatus(loadStatus, null);
+        setStatus(null);
         try {
             javax.swing.JFrame topFrame = (javax.swing.JFrame) SwingUtilities.getWindowAncestor(this);
             boolean wasOnTop = topFrame.isAlwaysOnTop();
@@ -195,7 +206,7 @@ public class ElectricPanel extends JPanel {
             }
             if (!NanometController.isPopupOpen()) {
                 displayMemoText("Could not open Power Purchase window.");
-                setStatus(loadStatus, false);
+                setStatus(false);
                 topFrame.setAlwaysOnTop(wasOnTop);
                 return;
             }
@@ -203,12 +214,12 @@ public class ElectricPanel extends JPanel {
             NanometController.setAmount(amount);
             Thread.sleep(500);
             String result = NanometController.clickLoad();
-            handleResult(result, loadStatus);
+            handleResult(result);
             topFrame.setAlwaysOnTop(wasOnTop);
             topFrame.toFront();
         } catch (Exception ex) {
             displayMemoText("Error: " + ex.getMessage());
-            setStatus(loadStatus, false);
+            setStatus(false);
         }
     }
 
@@ -295,7 +306,6 @@ public class ElectricPanel extends JPanel {
         dialog.add(scroll, BorderLayout.CENTER);
         dialog.add(quickPanel, BorderLayout.SOUTH);
         dialog.setVisible(true);
-
         results.setText(NanometController.queryDatabase(sqlField.getText().trim()));
     }
 
@@ -320,8 +330,8 @@ public class ElectricPanel extends JPanel {
         javax.swing.text.StyleConstants.setFontFamily(errorStyle, "Monospaced");
         javax.swing.text.StyleConstants.setFontSize(errorStyle, 12);
 
-        String userName = extract(raw, "User code");
-        String meterNo  = extract(raw, "Meter No");
+        String userName  = extract(raw, "User code");
+        String meterNo   = extract(raw, "Meter No");
         String lastAmount = extract(raw, "Amount of power purchase");
         String lastDate   = extract(raw, "Date of power purchase");
         String lastQty    = extractFromSection(raw, "Previous power purchase information", "Quantity of power purchase");

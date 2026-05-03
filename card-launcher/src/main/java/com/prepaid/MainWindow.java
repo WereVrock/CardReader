@@ -20,13 +20,12 @@ import javax.swing.SwingUtilities;
 
 public class MainWindow extends JFrame {
 
-public MainWindow() {
+    public MainWindow() {
         setTitle("Prepaid Card Manager");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setSize(700, 600);
         setLocationRelativeTo(null);
 
-        // Top bar
         JPanel topBar = new JPanel(new FlowLayout(FlowLayout.LEFT));
         JCheckBox launchNanomet = new JCheckBox("Launch Nanomet on start");
         JCheckBox alwaysOnTop = new JCheckBox("Always on Top");
@@ -37,33 +36,47 @@ public MainWindow() {
         topBar.add(dialogManagerBtn);
         topBar.add(dbViewerBtn);
 
-        // Tabs
         JTabbedPane tabs = new JTabbedPane();
-        tabs.addTab("Electric", new ElectricPanel());
+        ElectricPanel electricPanel = new ElectricPanel();
+        tabs.addTab("Electric", electricPanel);
         tabs.addTab("Water", new JPanel());
 
-        // Permanent log area
-        JTextArea permanentLog = new JTextArea(4, 0);
+        // Colored log area
+        javax.swing.JTextPane permanentLog = new javax.swing.JTextPane();
         permanentLog.setEditable(false);
         permanentLog.setFont(new Font("Monospaced", Font.PLAIN, 11));
         JScrollPane logScroll = new JScrollPane(permanentLog);
         logScroll.setBorder(BorderFactory.createTitledBorder("Dialog Log"));
 
         DialogDismisser.setOnLog(() -> SwingUtilities.invokeLater(() -> {
-            permanentLog.setText("");
-            DialogDismisser.getLog().forEach(line -> permanentLog.append(line + "\n"));
+            javax.swing.text.StyledDocument doc = permanentLog.getStyledDocument();
+            try { doc.remove(0, doc.getLength()); } catch (Exception ignored) {}
+            javax.swing.text.Style normal = permanentLog.addStyle("n", null);
+            javax.swing.text.StyleConstants.setForeground(normal, java.awt.Color.BLACK);
+            javax.swing.text.StyleConstants.setFontFamily(normal, "Monospaced");
+            javax.swing.text.Style red = permanentLog.addStyle("r", null);
+            javax.swing.text.StyleConstants.setForeground(red, java.awt.Color.RED);
+            javax.swing.text.StyleConstants.setBold(red, true);
+            javax.swing.text.StyleConstants.setFontFamily(red, "Monospaced");
+            for (String line : DialogDismisser.getLog()) {
+                String lower = line.toLowerCase();
+                javax.swing.text.Style s = (lower.contains("error") || lower.contains("fail")) ? red : normal;
+                try { doc.insertString(doc.getLength(), line + "\n", s); } catch (Exception ignored) {}
+            }
             permanentLog.setCaretPosition(permanentLog.getDocument().getLength());
         }));
+
+        // Wire dismiss callback to electric panel
+        DialogDismisser.setOnDismiss(msg -> electricPanel.onDismissed(msg));
+
         DialogDismisser.start();
 
         add(topBar, BorderLayout.NORTH);
         add(tabs, BorderLayout.CENTER);
         add(logScroll, BorderLayout.SOUTH);
 
-        // Always on top toggle
         alwaysOnTop.addActionListener(e -> setAlwaysOnTop(alwaysOnTop.isSelected()));
 
-        // Dialog Manager button opens a dialog
         dialogManagerBtn.addActionListener(e -> {
             JDialog dm = new JDialog(this, "Dialog Manager", false);
             dm.setSize(600, 300);
@@ -114,11 +127,9 @@ public MainWindow() {
             dialog.add(scroll, BorderLayout.CENTER);
             dialog.add(quickPanel, BorderLayout.SOUTH);
             dialog.setVisible(true);
-
             results.setText(NanometController.queryDatabase(sqlField.getText().trim()));
         });
 
-        // Launch Nanomet toggle
         launchNanomet.addActionListener(e -> {
             if (launchNanomet.isSelected()) {
                 try {
@@ -129,5 +140,4 @@ public MainWindow() {
             }
         });
     }
-
 }
