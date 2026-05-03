@@ -251,9 +251,9 @@ public static void clickLoad() {
         return null;
     }
 
-public static void setAmount(String amount) {
+public static boolean setAmount(String amount) {
         HWND popup = User32.INSTANCE.FindWindow(null, POPUP_WINDOW);
-        if (popup == null) return;
+        if (popup == null) return false;
 
         final HWND[] fieldHwnd = {null};
         User32.INSTANCE.EnumChildWindows(popup, (child, data) -> {
@@ -266,28 +266,74 @@ public static void setAmount(String amount) {
             return true;
         }, null);
 
-        if (fieldHwnd[0] == null) {
-            System.out.println("DEBUG: TDBNumberEditEh not found");
-            return;
-        }
+        if (fieldHwnd[0] == null) return false;
 
         try {
-            // Select all first
-            User32.INSTANCE.SendMessage(fieldHwnd[0], 0x00B1, new WPARAM(0), new LPARAM(-1)); // EM_SETSEL
-            Thread.sleep(50);
+            User32.INSTANCE.ShowWindow(popup, 9);
+            User32.INSTANCE.SetForegroundWindow(popup);
+            Thread.sleep(300);
 
-            // Send each char directly to the control handle
+            RECT r = new RECT();
+            User32.INSTANCE.GetWindowRect(fieldHwnd[0], r);
+            double scale = java.awt.Toolkit.getDefaultToolkit().getScreenResolution() / 96.0;
+            int cx = (int)((r.left + (r.right - r.left) / 2) / scale);
+            int cy = (int)((r.top + (r.bottom - r.top) / 2) / scale);
+
+            Robot robot = new Robot();
+            robot.mouseMove(cx, cy);
+            Thread.sleep(100);
+            robot.mousePress(InputEvent.BUTTON1_DOWN_MASK);
+            Thread.sleep(80);
+            robot.mouseRelease(InputEvent.BUTTON1_DOWN_MASK);
+            Thread.sleep(150);
+
+            // Select all and delete
+            robot.keyPress(java.awt.event.KeyEvent.VK_CONTROL);
+            robot.keyPress(java.awt.event.KeyEvent.VK_A);
+            robot.keyRelease(java.awt.event.KeyEvent.VK_A);
+            robot.keyRelease(java.awt.event.KeyEvent.VK_CONTROL);
+            Thread.sleep(80);
+            robot.keyPress(java.awt.event.KeyEvent.VK_DELETE);
+            robot.keyRelease(java.awt.event.KeyEvent.VK_DELETE);
+            Thread.sleep(100);
+
+            // Type amount
             for (char c : amount.toCharArray()) {
-                User32.INSTANCE.SendMessage(fieldHwnd[0], 0x0102, new WPARAM(c), new LPARAM(0)); // WM_CHAR
-                Thread.sleep(20);
+                int keyCode = java.awt.event.KeyEvent.getExtendedKeyCodeForChar(c);
+                if (keyCode != java.awt.event.KeyEvent.VK_UNDEFINED) {
+                    robot.keyPress(keyCode);
+                    robot.keyRelease(keyCode);
+                    Thread.sleep(40);
+                }
             }
+            Thread.sleep(200);
 
-            // Verify
-            char[] verify = new char[32];
-            User32.INSTANCE.GetWindowText(fieldHwnd[0], verify, 32);
-            System.out.println("DEBUG field after typing: [" + new String(verify).trim() + "]");
+            // Verify by selecting all and copying to clipboard
+            robot.keyPress(java.awt.event.KeyEvent.VK_CONTROL);
+            robot.keyPress(java.awt.event.KeyEvent.VK_A);
+            robot.keyRelease(java.awt.event.KeyEvent.VK_A);
+            robot.keyRelease(java.awt.event.KeyEvent.VK_CONTROL);
+            Thread.sleep(80);
+            robot.keyPress(java.awt.event.KeyEvent.VK_CONTROL);
+            robot.keyPress(java.awt.event.KeyEvent.VK_C);
+            robot.keyRelease(java.awt.event.KeyEvent.VK_C);
+            robot.keyRelease(java.awt.event.KeyEvent.VK_CONTROL);
+            Thread.sleep(200);
+
+            String actual = (String) java.awt.Toolkit.getDefaultToolkit()
+                .getSystemClipboard().getData(java.awt.datatransfer.DataFlavor.stringFlavor);
+            actual = actual == null ? "" : actual.trim();
+
+            double expected = Double.parseDouble(amount.replace(",", "."));
+            double actualVal = actual.isEmpty() ? 0 : Double.parseDouble(actual.replace(",", "."));
+
+
+
+            return Math.abs(expected - actualVal) < 0.01;
+
         } catch (Exception e) {
             e.printStackTrace();
+            return false;
         }
     }
 
