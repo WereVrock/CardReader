@@ -181,19 +181,76 @@ Thread.sleep(150);
 robot.mouseRelease(InputEvent.BUTTON1_DOWN_MASK);
 }
 
-public static void clickReadCard() {
-HWND popup = User32.INSTANCE.FindWindow(null, POPUP_WINDOW);
-if (popup == null) return;
-User32.INSTANCE.EnumChildWindows(popup, (child, data) -> {
-char[] text = new char[512];
-User32.INSTANCE.GetWindowText(child, text, 512);
-if (new String(text).trim().equals("Read card")) {
-User32.INSTANCE.SendMessage(child, 0x00F5, new WPARAM(0), new LPARAM(0));
-return false;
-}
-return true;
-}, null);
-}
+public static String clickReadCard() {
+        HWND popup = User32.INSTANCE.FindWindow(null, POPUP_WINDOW);
+        if (popup == null) return null;
+        User32.INSTANCE.EnumChildWindows(popup, (child, data) -> {
+            char[] text = new char[512];
+            User32.INSTANCE.GetWindowText(child, text, 512);
+            if (new String(text).trim().equals("Read card")) {
+                User32.INSTANCE.SendMessage(child, 0x00F5, new WPARAM(0), new LPARAM(0));
+                return false;
+            }
+            return true;
+        }, null);
+        return waitForResultWindow(3000);
+    }
+
+    public static String clickLoad() {
+        HWND popup = User32.INSTANCE.FindWindow(null, POPUP_WINDOW);
+        if (popup == null) return null;
+        User32.INSTANCE.EnumChildWindows(popup, (child, data) -> {
+            char[] text = new char[512];
+            User32.INSTANCE.GetWindowText(child, text, 512);
+            if (new String(text).trim().equals("Power purchase")) {
+                User32.INSTANCE.SendMessage(child, 0x00F5, new WPARAM(0), new LPARAM(0));
+                return false;
+            }
+            return true;
+        }, null);
+        return waitForResultWindow(5000);
+    }
+
+    // Watches for any new top-level window appearing after an action.
+    // Returns the window text if found, null if timeout.
+    private static String waitForResultWindow(int timeoutMs) {
+        // Snapshot existing windows before
+        java.util.Set<Long> before = new java.util.HashSet<>();
+        User32.INSTANCE.EnumWindows((hwnd, data) -> {
+            before.add(Pointer.nativeValue(hwnd.getPointer()));
+            return true;
+        }, null);
+
+        long deadline = System.currentTimeMillis() + timeoutMs;
+        while (System.currentTimeMillis() < deadline) {
+            try { Thread.sleep(200); } catch (Exception ignored) {}
+            final String[] found = {null};
+            User32.INSTANCE.EnumWindows((hwnd, data) -> {
+                long id = Pointer.nativeValue(hwnd.getPointer());
+                if (!before.contains(id) && User32.INSTANCE.IsWindowVisible(hwnd)) {
+                    char[] txt = new char[512];
+                    User32.INSTANCE.GetWindowText(hwnd, txt, 512);
+                    String t = new String(txt).trim();
+                    if (!t.isEmpty()) {
+                        // Also grab child text for message content
+                        final StringBuilder content = new StringBuilder(t).append(": ");
+                        User32.INSTANCE.EnumChildWindows(hwnd, (child, d) -> {
+                            char[] ct = new char[512];
+                            User32.INSTANCE.GetWindowText(child, ct, 512);
+                            String cs = new String(ct).trim();
+                            if (!cs.isEmpty()) content.append(cs).append(" ");
+                            return true;
+                        }, null);
+                        found[0] = content.toString().trim();
+                        return false;
+                    }
+                }
+                return true;
+            }, null);
+            if (found[0] != null) return found[0];
+        }
+        return null;
+    }
 
 public static void setAmount(String amount) {
         HWND popup = User32.INSTANCE.FindWindow(null, POPUP_WINDOW);
@@ -213,7 +270,7 @@ public static void setAmount(String amount) {
         if (fieldHwnd[0] == null) return;
 
         try {
-            // Get field position and click it
+            // Click the field to focus it
             RECT r = new RECT();
             User32.INSTANCE.GetWindowRect(fieldHwnd[0], r);
             int cx = r.left + (r.right - r.left) / 2;
@@ -222,26 +279,32 @@ public static void setAmount(String amount) {
             Robot robot = new Robot();
             robot.mouseMove(cx, cy);
             robot.mousePress(InputEvent.BUTTON1_DOWN_MASK);
+            Thread.sleep(100);
+            robot.mouseRelease(InputEvent.BUTTON1_DOWN_MASK);
+            Thread.sleep(200);
+
+            // Triple click to select all existing content
+            robot.mousePress(InputEvent.BUTTON1_DOWN_MASK);
             Thread.sleep(50);
             robot.mouseRelease(InputEvent.BUTTON1_DOWN_MASK);
-            Thread.sleep(150);
-
-            // Select all and delete existing content
-            robot.keyPress(java.awt.event.KeyEvent.VK_CONTROL);
-            robot.keyPress(java.awt.event.KeyEvent.VK_A);
-            robot.keyRelease(java.awt.event.KeyEvent.VK_A);
-            robot.keyRelease(java.awt.event.KeyEvent.VK_CONTROL);
             Thread.sleep(50);
-            robot.keyPress(java.awt.event.KeyEvent.VK_DELETE);
-            robot.keyRelease(java.awt.event.KeyEvent.VK_DELETE);
+            robot.mousePress(InputEvent.BUTTON1_DOWN_MASK);
             Thread.sleep(50);
+            robot.mouseRelease(InputEvent.BUTTON1_DOWN_MASK);
+            Thread.sleep(50);
+            robot.mousePress(InputEvent.BUTTON1_DOWN_MASK);
+            Thread.sleep(50);
+            robot.mouseRelease(InputEvent.BUTTON1_DOWN_MASK);
+            Thread.sleep(100);
 
-            // Type the amount digit by digit
+            // Type the amount
             for (char c : amount.toCharArray()) {
                 int keyCode = java.awt.event.KeyEvent.getExtendedKeyCodeForChar(c);
-                robot.keyPress(keyCode);
-                robot.keyRelease(keyCode);
-                Thread.sleep(30);
+                if (keyCode != java.awt.event.KeyEvent.VK_UNDEFINED) {
+                    robot.keyPress(keyCode);
+                    robot.keyRelease(keyCode);
+                    Thread.sleep(40);
+                }
             }
         } catch (Exception e) {
             e.printStackTrace();
@@ -336,18 +399,6 @@ return null;
 return null;
 }
 
-public static void clickLoad() {
-HWND popup = User32.INSTANCE.FindWindow(null, POPUP_WINDOW);
-if (popup == null) return;
-User32.INSTANCE.EnumChildWindows(popup, (child, data) -> {
-char[] text = new char[512];
-User32.INSTANCE.GetWindowText(child, text, 512);
-if (new String(text).trim().equals("Power purchase")) {
-User32.INSTANCE.SendMessage(child, 0x00F5, new WPARAM(0), new LPARAM(0));
-return false;
-}
-return true;
-}, null);
-}
+
 }
 
